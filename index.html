@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로젝트명뭐하제인 - 자리 유무 확인</title>
+    
+    <!-- TensorFlow.js 및 티처블 머신 이미지 분류 라이브러리 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
+
+    <style>
+        /* 기본 스타일 리셋 및 반응형 레이아웃 설정 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            /* 연분홍색 배경 설정 */
+            background-color: #ffe6eb;
+            color: #333333;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* SVG 장식 그래픽 - 외부 이미지 파일 없이 완성된 화면 구성 */
+        .decor-ribbon {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 140px;
+            height: 140px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .decor-book-pencil {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            width: 130px;
+            height: 130px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* 화면이 좁은 모바일에서는 장식이 메인 콘텐츠를 가리지 않도록 투명도 조절 */
+        @media (max-width: 600px) {
+            .decor-ribbon {
+                width: 100px;
+                height: 100px;
+                opacity: 0.85;
+            }
+            .decor-book-pencil {
+                width: 90px;
+                height: 90px;
+                opacity: 0.85;
+            }
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px; /* 모바일 세로 화면에 최적화 */
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 8px 24px rgba(219, 112, 147, 0.15);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 80px; /* 하단 장식 요소 공간 확보 */
+        }
+
+        /* 헤더 영역 */
+        header {
+            text-align: center;
+            border-bottom: 1px solid #ffe1e8;
+            padding-bottom: 12px;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            color: #c71585;
+            margin-bottom: 4px;
+        }
+
+        header p {
+            font-size: 0.9rem;
+            color: #666666;
+        }
+
+        /* 정보 카드 스타일 */
+        .info-card {
+            background-color: #fff0f5;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+            border: 1px solid #ffd1dc;
+        }
+
+        .info-card strong {
+            color: #b03060;
+        }
+
+        /* 핵심: 체험 및 실시간 예측 섹션 */
+        .demo-section {
+            border: 2px solid #d87093;
+            border-radius: 16px;
+            padding: 16px;
+            background-color: #fff8f9;
+            text-align: center;
+        }
+
+        .demo-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #c71585;
+            margin-bottom: 12px;
+        }
+
+        /* 카메라 출력 및 상태 메시지 */
+        .webcam-container {
+            width: 100%;
+            height: 260px;
+            background-color: #222222;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto 12px auto;
+            position: relative;
+        }
+
+        .webcam-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
+        }
+
+        #status-message {
+            color: #ffffff;
+            font-size: 0.9rem;
+            padding: 10px;
+            text-align: center;
+            word-break: keep-all;
+        }
+
+        /* 버튼 스타일 */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 0;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        #btn-start {
+            background-color: #d87093;
+            color: #ffffff;
+        }
+
+        #btn-start:disabled {
+            background-color: #e0b0c0;
+            cursor: not-allowed;
+        }
+
+        #btn-stop {
+            background-color: #cd5c5c;
+            color: #ffffff;
+        }
+
+        #btn-stop:disabled {
+            background-color: #e0b0c0;
+            cursor: not-allowed;
+        }
+
+        /* 예측 결과 영역 */
+        .result-box {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid #ffd1dc;
+            min-height: 180px;
+        }
+
+        .top-prediction {
+            text-align: center;
+            padding: 8px;
+            margin-bottom: 12px;
+            background-color: #fff0f5;
+            border-radius: 8px;
+        }
+
+        .top-prediction-title {
+            font-size: 0.8rem;
+            color: #666666;
+        }
+
+        .top-prediction-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #c71585;
+        }
+
+        .disclaimer {
+            font-size: 0.75rem;
+            color: #888888;
+            margin-top: 4px;
+        }
+
+        /* 클래스별 확률 막대 그래프 */
+        .label-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .label-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .label-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .bar-background {
+            width: 100%;
+            height: 12px;
+            background-color: #ffe6eb;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #d87093;
+            transition: width 0.2s ease;
+        }
+
+        /* 하단 모델 한계 및 팀 정보 */
+        .notice-card {
+            background-color: #fff0f5;
+            border: 1px solid #ffd1dc;
+            color: #900c3f;
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        footer {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #888888;
+            border-top: 1px solid #ffe1e8;
+            padding-top: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 우측 상단: 진한 분홍색 리본 (SVG) -->
+<svg class="decor-ribbon" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 메인 리본 날개 -->
+    <path d="M70 50 C 40 10, 20 40, 60 55 C 20 70, 40 100, 70 60 Z" fill="#c71585" />
+    <path d="M70 50 C 100 10, 120 40, 80 55 C 120 70, 100 100, 70 60 Z" fill="#c71585" />
+    <!-- 리본 매듭 -->
+    <circle cx="70" cy="55" r="10" fill="#900c3f" />
+    <!-- 아래로 늘어진 끈 -->
+    <path d="M66 62 L50 110 L64 100 L72 112 L74 62 Z" fill="#b03060" />
+</svg>
+
+<!-- 왼쪽 하단: 펼쳐진 책과 깎인 연필 (SVG) -->
+<svg class="decor-book-pencil" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 펼쳐진 책 표지/페이지 -->
+    <path d="M20 90 Q 55 80 70 95 Q 85 80 120 90 L120 120 Q 85 110 70 125 Q 55 110 20 120 Z" fill="#ffffff" stroke="#d87093" stroke-width="3" />
+    <!-- 책 바인딩 중앙선 -->
+    <path d="M70 95 L70 125" stroke="#b03060" stroke-width="2" />
+    <!-- 책 페이지 줄 표현 -->
+    <path d="M30 98 Q 50 92 62 102" stroke="#ffd1dc" stroke-width="2" />
+    <path d="M30 106 Q 50 100 62 110" stroke="#ffd1dc" stroke-width="2" />
+    <path d="M78 102 Q 90 92 110 98" stroke="#ffd1dc" stroke-width="2" />
+    <path d="M78 110 Q 90 100 110 106" stroke="#ffd1dc" stroke-width="2" />
+    
+    <!-- 책 위에 놓인 뾰족하게 깎인 연필 -->
+    <g transform="rotate(-25 70 70)">
+        <!-- 연필 몸통 -->
+        <rect x="35" y="60" width="60" height="10" fill="#ffb6c1" rx="1" />
+        <!-- 깎인 나무 부분 -->
+        <polygon points="35,60 20,65 35,70" fill="#f4c290" />
+        <!-- 뾰족한 연필심 -->
+        <polygon points="23,64 20,65 23,66" fill="#333333" />
+        <!-- 지우개 쇠 테두리 및 지우개 -->
+        <rect x="95" y="60" width="5" height="10" fill="#cccccc" />
+        <rect x="100" y="60" width="8" height="10" fill="#c71585" rx="1" />
+    </g>
+</svg>
+
+<div class="container">
+    <!-- 1. 프로젝트명과 한 줄 설명 -->
+    <header>
+        <h1>프로젝트명뭐하제인</h1>
+        <p>인공지능으로 학교 내 의자의 자리 유무를 확인합니다.</p>
+    </header>
+
+    <!-- 2. 해결하려는 문제 및 주요 사용자 -->
+    <section class="info-card">
+        <p><strong>해결 문제:</strong> 학교에서 자리 유무 여부 확인하기</p>
+        <p><strong>주요 사용자:</strong> 자리에 앉아 공부하고 싶은 사람</p>
+    </section>
+
+    <!-- 실시간 인공지능 체험 섹션 -->
+    <section class="demo-section">
+        <div class="demo-title">실시간 자리 확인 체험</div>
+
+        <!-- 버튼 영역 -->
+        <div class="btn-group">
+            <button id="btn-start" onclick="init()">카메라 시작</button>
+            <button id="btn-stop" onclick="stop()" disabled>중지</button>
+        </div>
+
+        <!-- 웹캠 화면 -->
+        <div class="webcam-container">
+            <div id="webcam-wrapper"></div>
+            <div id="status-message">카메라 시작 버튼을 누르면 인공지능이 작동합니다.</div>
+        </div>
+
+        <!-- 예측 결과 표시 -->
+        <div class="result-box">
+            <div class="top-prediction">
+                <div class="top-prediction-title">현재 예측 결과</div>
+                <div id="top-result" class="top-prediction-value">-</div>
+                <div class="disclaimer">* 가장 높은 확률이 반드시 정답은 아닐 수 있습니다.</div>
+            </div>
+
+            <!-- 확률 막대 그래프 영역 -->
+            <div id="label-container" class="label-container">
+                <!-- 자바스크립트로 자동 생성됩니다 -->
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. 모델의 한계 및 주의사항 -->
+    <section class="notice-card">
+        <strong>⚠️ 모델의 한계 및 확인 사항</strong>
+        <p>본 모델은 사람의 형태 위주로 학습되었습니다. 의자에 가방이나 옷 등 물체만 놓여있는 경우 정확히 구분하지 못할 수 있으므로, 사람의 형태가 보이지 않는다면 실제 사용자가 직접 확인해야 합니다.</p>
+    </section>
+
+    <!-- 7. 팀 정보 -->
+    <footer>
+        <p>팀명: 팀명뭐하제인 | 팀원: 20924 한제인, 20925 황서하</p>
+    </footer>
+</div>
+
+<script>
+    // 티처블 머신 모델 공유 주소
+    const URL = "https://teachablemachine.withgoogle.com/models/UjvRs6_NA/";
+
+    let model, webcam, labelContainer, maxPredictions;
+    let isRunning = false; // 중복 실행 방지 플래그
+    let animationFrameId = null; // 웹캠 업데이트 애니메이션 ID
+
+    // 카메라 시작 및 모델 로딩 함수
+    async function init() {
+        if (isRunning) return; // 이미 실행 중이면 중복 실행 방지
+
+        const statusMsg = document.getElementById("status-message");
+        const btnStart = document.getElementById("btn-start");
+        const btnStop = document.getElementById("btn-stop");
+
+        btnStart.disabled = true;
+        statusMsg.style.display = "block";
+        statusMsg.innerText = "모델을 불러오는 중입니다... 잠시만 기다려주세요.";
+
+        try {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            // 모델 및 메타데이터 불러오기
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            statusMsg.innerText = "카메라 권한을 요청하는 중입니다...";
+
+            // 웹캠 설정 (너비 200, 높이 200, 후면/전면 카메라 사용)
+            const flip = true; 
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup(); // 카메라 권한 요청 및 연결
+            await webcam.play();
+
+            isRunning = true;
+            statusMsg.style.display = "none"; // 정상 연결 시 안내 문구 숨김
+
+            // 웹캠 화면 HTML 삽입
+            const webcamWrapper = document.getElementById("webcam-wrapper");
+            webcamWrapper.innerHTML = "";
+            webcamWrapper.appendChild(webcam.canvas);
+
+            // 메타데이터 기반 UI 구성을 위한 레이블 컨테이너 초기화
+            labelContainer = document.getElementById("label-container");
+            labelContainer.innerHTML = "";
+            for (let i = 0; i < maxPredictions; i++) {
+                const row = document.createElement("div");
+                row.className = "label-row";
+                row.innerHTML = `
+                    <div class="label-text">
+                        <span id="class-name-${i}">-</span>
+                        <span id="class-prob-${i}">0%</span>
+                    </div>
+                    <div class="bar-background">
+                        <div id="bar-fill-${i}" class="bar-fill"></div>
+                    </div>
+                `;
+                labelContainer.appendChild(row);
+            }
+
+            btnStop.disabled = false;
+            
+            // 실시간 예측 반복 시작
+            loop();
+
+        } catch (error) {
+            console.error("오류 발생:", error);
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            
+            // 사용자 에러 처리 안내
+            if (error.name === "NotAllowedError" || error.message.includes("Permission")) {
+                statusMsg.innerText = "카메라 접근 권한이 거부되었습니다. 브라우저 설정에서 카메라 권한을 허용한 뒤 다시 시도해 주세요.";
+            } else {
+                statusMsg.innerText = "모델을 불러오거나 작동하는 데 실패했습니다. 모델 주소를 확인하거나 인터넷 연결을 점검해 주세요.";
+            }
+        }
+    }
+
+    // 실시간 웹캠 업데이트 및 예측 루프
+    async function loop() {
+        if (!isRunning) return;
+        
+        webcam.update(); // 웹캠 프레임 갱신
+        await predict(); // 예측 실행
+        animationFrameId = window.requestAnimationFrame(loop);
+    }
+
+    // 예측 처리 함수
+    async function predict() {
+        if (!model || !webcam) return;
+
+        // 모델을 사용해 웹캠 이미지 분류
+        const prediction = await model.predict(webcam.canvas);
+        
+        let highestProb = -1;
+        let highestClass = "-";
+
+        // 클래스별 결과 갱신
+        for (let i = 0; i < maxPredictions; i++) {
+            const className = prediction[i].className; // 메타데이터의 실제 클래스 이름
+            const probability = prediction[i].probability;
+            const percentage = (probability * 100).toFixed(0);
+
+            // 화면 표시 요소 업데이트
+            document.getElementById(`class-name-${i}`).innerText = className;
+            document.getElementById(`class-prob-${i}`).innerText = percentage + "%";
+            document.getElementById(`bar-fill-${i}`).style.width = percentage + "%";
+
+            // 가장 높은 확률의 클래스 탐색
+            if (probability > highestProb) {
+                highestProb = probability;
+                highestClass = className;
+            }
+        }
+
+        // 가장 높은 예측 결과 크게 강조
+        document.getElementById("top-result").innerText = `${highestClass} (${(highestProb * 100).toFixed(0)}%)`;
+    }
+
+    // 입력 장치 및 예측 작업 중지 함수
+    function stop() {
+        if (!isRunning) return;
+
+        isRunning = false;
+
+        // 프레임 애니메이션 루프 중지
+        if (animationFrameId) {
+            window.cancelAnimationFrame(animationFrameId);
+        }
+
+        // 웹캠 중지
+        if (webcam) {
+            webcam.stop();
+        }
+
+        // UI 상태 초기화
+        document.getElementById("webcam-wrapper").innerHTML = "";
+        const statusMsg = document.getElementById("status-message");
+        statusMsg.style.display = "block";
+        statusMsg.innerText = "카메라가 중지되었습니다. 시작 버튼을 눌러 다시 작동시킬 수 있습니다.";
+
+        document.getElementById("top-result").innerText = "-";
+        document.getElementById("label-container").innerHTML = "";
+
+        document.getElementById("btn-start").disabled = false;
+        document.getElementById("btn-stop").disabled = true;
+    }
+</script>
+
+</body>
+</html>
